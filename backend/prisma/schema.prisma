@@ -1,0 +1,260 @@
+// FinSight — Prisma Schema
+// Database: PostgreSQL (Supabase)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────────────────────────
+
+enum TransactionType {
+  CREDIT
+  DEBIT
+}
+
+enum Category {
+  Food
+  Groceries
+  Travel
+  Shopping
+  Entertainment
+  Healthcare
+  Education
+  Utilities
+  EMI
+  Salary
+  Investment
+  Transfer
+  Others
+}
+
+enum CategorySource {
+  MERCHANT_LEARNING
+  RULE_ENGINE
+  ML_CLASSIFIER
+  GEMINI
+  FALLBACK
+  MANUAL
+}
+
+enum AlertType {
+  DUPLICATE
+  LARGE_TRANSACTION
+  SPENDING_SPIKE
+}
+
+enum Frequency {
+  WEEKLY
+  MONTHLY
+  YEARLY
+}
+
+enum ChatRole {
+  USER
+  ASSISTANT
+}
+
+// ─────────────────────────────────────────────────────────────────
+// USERS
+// ─────────────────────────────────────────────────────────────────
+
+model User {
+  id        String   @id @default(uuid())
+  name      String
+  email     String   @unique
+  password  String
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt      @map("updated_at")
+
+  // Relations
+  transactions     Transaction[]
+  budgets          Budget[]
+  subscriptions    Subscription[]
+  fraudAlerts      FraudAlert[]
+  chatHistory      ChatHistory[]
+  merchantLearning MerchantLearning[]
+
+  @@map("users")
+}
+
+// ─────────────────────────────────────────────────────────────────
+// TRANSACTIONS
+// Central table — everything else is derived from it
+// ─────────────────────────────────────────────────────────────────
+
+model Transaction {
+  id          String          @id @default(uuid())
+  userId      String          @map("user_id")
+  amount      Decimal         @db.Decimal(12, 2)
+  description String
+  merchant    String?
+  date        DateTime        @db.Date
+  type        TransactionType
+  category    Category        @default(Others)
+  confidence  Float           @default(0)   // AI confidence 0.0 – 1.0
+  source      CategorySource  @default(FALLBACK) // which layer categorized it
+  isCorrected Boolean         @default(false) @map("is_corrected")
+  notes       String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt      @map("updated_at")
+
+  // Relations
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fraudAlerts FraudAlert[]
+
+  // Indexes — see DATABASE.md for rationale
+  @@index([userId])
+  @@index([category])
+  @@index([merchant])
+  @@index([date])
+  @@index([createdAt(sort: Desc)])
+  @@index([userId, date(sort: Desc)])
+  @@index([userId, category])
+  @@index([userId, type])
+
+  @@map("transactions")
+}
+
+// ─────────────────────────────────────────────────────────────────
+// BUDGETS
+// Monthly spending limits per category, per user
+// ─────────────────────────────────────────────────────────────────
+
+model Budget {
+  id       String   @id @default(uuid())
+  userId   String   @map("user_id")
+  category Category
+  month    String   // format: "2024-01" (YYYY-MM)
+  amount   Decimal  @db.Decimal(12, 2)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt      @map("updated_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // One budget per category per month per user
+  @@unique([userId, category, month])
+  @@index([userId])
+  @@index([userId, month])
+
+  @@map("budgets")
+}
+
+// ─────────────────────────────────────────────────────────────────
+// SUBSCRIPTIONS
+// Detected recurring charges — one record per merchant per user
+// ─────────────────────────────────────────────────────────────────
+
+model Subscription {
+  id              String    @id @default(uuid())
+  userId          String    @map("user_id")
+  merchant        String
+  averageAmount   Decimal   @db.Decimal(12, 2) @map("average_amount")
+  frequency       Frequency @default(MONTHLY)
+  lastCharged     DateTime  @map("last_charged")
+  nextExpected    DateTime? @map("next_expected")
+  isActive        Boolean   @default(true) @map("is_active")
+  transactionCount Int      @default(0)   @map("transaction_count")
+  category        Category  @default(Others)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt      @map("updated_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // One subscription entry per merchant per user
+  @@unique([userId, merchant])
+  @@index([userId])
+  @@index([userId, isActive])
+
+  @@map("subscriptions")
+}
+
+// ─────────────────────────────────────────────────────────────────
+// FRAUD ALERTS
+// Anomaly flags linked to specific transactions
+// ─────────────────────────────────────────────────────────────────
+
+model FraudAlert {
+  id            String    @id @default(uuid())
+  userId        String    @map("user_id")
+  transactionId String    @map("transaction_id")
+  alertType     AlertType @map("alert_type")
+  description   String
+  isResolved    Boolean   @default(false) @map("is_resolved")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt      @map("updated_at")
+
+  // Relations
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, isResolved])
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([transactionId])
+
+  @@map("fraud_alerts")
+}
+
+// ─────────────────────────────────────────────────────────────────
+// CHAT HISTORY
+// Stores AI chatbot conversation turns
+// ─────────────────────────────────────────────────────────────────
+
+model ChatHistory {
+  id            String   @id @default(uuid())
+  userId        String   @map("user_id")
+  role          ChatRole
+  content       String   @db.Text
+  functionCalls Json?    @map("function_calls") // stored Gemini function call metadata
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, createdAt(sort: Desc)])
+
+  @@map("chat_history")
+}
+
+// ─────────────────────────────────────────────────────────────────
+// MERCHANT LEARNING
+// User-corrected merchant→category mappings
+// Acts as Layer 1 of the AI categorization pipeline
+// ─────────────────────────────────────────────────────────────────
+
+model MerchantLearning {
+  id              String   @id @default(uuid())
+  userId          String   @map("user_id")
+  merchantName    String   @map("merchant_name")
+  category        Category
+  correctionCount Int      @default(1) @map("correction_count")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt      @map("updated_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // One mapping per merchant per user
+  @@unique([userId, merchantName])
+  @@index([userId])
+  @@index([userId, merchantName])
+
+  @@map("merchant_learning")
+}

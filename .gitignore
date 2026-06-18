@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+.venv/
+venv/
+env/
+
+# Environment files — never commit these
+.env
+.env.local
+.env.production
+
+# Build output
+dist/
+dist-ssr/
+build/
+
+# Logs
+logs/
+*.log
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Uploaded CSVs (processed and discarded)
+backend/uploads/*.csv
+
+# Training data (not needed in repo)
+ai-service/training/data/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Prisma
+.prisma/
