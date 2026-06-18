@@ -9,6 +9,26 @@ const logger = require('./utils/logger');
 
 const app = express();
 
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:5173')
+  .split(',')
+  .map(origin => origin.trim());
+
+console.log('Allowed Origins:', allowedOrigins);
+
+app.use(cors({
+  origin: (origin, callback) => {
+    console.log('Request Origin:', origin);
+
+    if (!origin || allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+
+    console.log('Blocked Origin:', origin);
+    callback(new Error('Not allowed by CORS'));
+  },
+  credentials: true,
+}));
+
 // Trust Render/Vercel reverse proxy so rate limiter sees real client IPs
 app.set('trust proxy', 1);
 
