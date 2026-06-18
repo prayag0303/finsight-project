@@ -25,7 +25,6 @@ Most banking apps show you a list of transactions. FinSight gives you **intellig
 
 ## Architecture
 
-See [ARCHITECTURE.md](./ARCHITECTURE.md) for complete system design.
 
 ## Project Structure
 
@@ -49,15 +48,4 @@ finsight/
 9. **Monthly Insights** — AI-generated financial reports
 10. **Finance Chatbot** — Natural language queries with Gemini function calling
 
-## Development Setup
 
-See individual README files in each subdirectory after all phases are complete.
-
-## Phases
-
-- [x] Phase 1 — Architecture
-- [ ] Phase 2 — Database Design
-- [ ] Phase 3 — Backend Development
-- [ ] Phase 4 — AI Service
-- [ ] Phase 5 — Frontend
-- [ ] Phase 6 — Deployment
